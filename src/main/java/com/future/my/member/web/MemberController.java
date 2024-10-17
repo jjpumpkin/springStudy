@@ -10,20 +10,30 @@ import javax.servlet.http.HttpSession;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import com.future.my.common.exception.BizException;
 import com.future.my.common.service.CodeService;
+import com.future.my.common.valid.Login;
+import com.future.my.common.valid.Regist;
 import com.future.my.common.vo.CodeVO;
+import com.future.my.common.vo.MessageVO;
 import com.future.my.member.service.MemberService;
 import com.future.my.member.vo.MemberVO;
+import com.future.my.member.vo.QuestionVO;
 
 @Controller
 public class MemberController {
@@ -51,31 +61,61 @@ public class MemberController {
 	
 	
 	@RequestMapping("/registView")
-	public String registView() {
+	public String registView( @ModelAttribute("member") MemberVO member) {
 		return "member/registView";
 	}
-	
 	@RequestMapping("/registDo")
-	public String registDo(MemberVO vo) {
-		vo.setMemPw(passwordEncoder.encode(vo.getMemPw()));
-		System.out.println(vo);
-		try {
-			memberService.registMember(vo);
-		} catch (Exception e) {
-			e.printStackTrace();
+	   //2024-10-17 2.model 추가, RedirectAttri 추가
+	   // redirect 기본적으로 재요청을 하는것 이기에 modal 객체를 전달 할 수 없음 : forward 를 해줘여ㅑ함
+   public String registDo(@Validated(Regist.class) @ModelAttribute("member")
+   MemberVO member, BindingResult result  ,Model model) {
+		if(result.hasErrors()) {
+			// @validated의
+			return "member/registView";
 		}
-		return "redirect:/";
-	}
+		
+
+	      //2024-10-17 1.기존 하나의 try-catch 를  3개짜리로 수정
+	         try {
+	        	   member.setMemPw(passwordEncoder.encode(member.getMemPw()));
+	        	   memberService.registMember(member);
+	         } catch (DuplicateKeyException e) {
+	            MessageVO messageVO = new MessageVO(false,"회원가입","중복 아이디!","/registView","회원가입");
+	            model.addAttribute("messageVO",messageVO);
+	            return "member/registView";
+	         
+	         } catch (DataAccessException e) {
+	            MessageVO messageVO = new MessageVO(false,"회원가입","잘못된 입력입니다!","/registView","회원가입");
+	            model.addAttribute("messageVO",messageVO);
+	            return "member/registView";
+	         } catch (BizException e) {
+	            MessageVO messageVO = new MessageVO(false,"회원가입","회원가입 안됨!","/registView","회원가입");
+	            model.addAttribute("messageVO",messageVO);
+	            return "member/registView";
+	         }
+	         MessageVO messageVO =
+	         new MessageVO(true,"회원가입","회원가입 성공!","/loginView","로그인");
+	         //2024-10-17 3. 리 다이렉트시 데이터 전달
+	         model.addAttribute("messageVO",messageVO);
+	         // 포워드는 지금 가지고 있는 값을 가지고 이동
+	         return "forward:/";
+	   }
 	
+
 	@RequestMapping("/loginView")
-	public String loginView() {
+	public String loginView(@ModelAttribute("member") MemberVO member) {
 		return "member/loginView";
 	}
 
 	@RequestMapping("/loginDo")
 	public String loginDo(MemberVO vo, boolean remember
-			            , HttpSession session
-			            ,HttpServletResponse response) throws Exception {
+			            ,HttpSession session
+			            ,HttpServletResponse response
+			            ,@Validated(Login.class)@ModelAttribute("member") MemberVO member 
+			            ,BindingResult result)throws Exception {
+		if(result.hasErrors()) {
+			return "member/loginView";
+		}
 		
 		System.out.println(vo);
 		MemberVO login = memberService.loginMember(vo);
@@ -144,6 +184,17 @@ public class MemberController {
 //		model.addAttribute("comList", comList);
 		
 		return "member/test";
+	}
+	
+	@RequestMapping("/survey")
+	public String survey(Model model) {
+		
+		
+		ArrayList<QuestionVO> qList= memberService.getSurvey();
+		System.out.println(qList);
+		model.addAttribute("qList", qList);
+	     return "member/survey";	
+		
 	}
 		
 	
